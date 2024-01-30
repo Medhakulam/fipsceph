@@ -1,3 +1,15 @@
+FROM ubuntu:20.04 as boringssl-builder
+
+COPY ./openssl.ld /openssl.ld
+COPY ./build-boringssl.sh /build-boringssl.sh
+
+RUN apt-get update -y \
+  && apt-get install wget -y \
+  && wget https://go.dev/dl/go1.21.6.linux-amd64.tar.gz \
+  && tar -C /usr/local -xzf go1.21.6.linux-amd64.tar.gz \
+  && export PATH=$PATH:/usr/local/go/bin \
+  && /build-boringssl.sh
+
 FROM ubuntu:20.04
 
 RUN --mount=type=secret,id=pro-attach-config \
@@ -32,6 +44,7 @@ RUN apt-get install -y gcc-11 g++-11 git vim python3 cmake ninja-build python3-p
 RUN apt-get install -y libibverbs-dev librdmacm-dev libudev-dev libblkid-dev libkeyutils-dev libldap-dev libfuse-dev pkg-config libcryptsetup-dev libaio-dev libsqlite3-dev libsnappy-dev liblz4-dev gperf libcurl4-gnutls-dev liboath-dev liblttng-ust-dev libbabeltrace-dev libthrift-dev liblua5*-dev libnl-3-dev libnl-genl-3-dev  libcap-ng-dev libicu-dev librabbitmq-dev librdkafka-dev flex libre2-dev python3.8-venv libcap-dev librocksdb-dev wget
 RUN apt-get remove openssl -y
 ADD fip_openssl.cnf /root/.
+COPY --from=boringssl-builder /boringssl/.openssl/lib /boringssl
 RUN \
     mkdir -p /root/ca && \
     cd /root/ca && \
@@ -56,6 +69,8 @@ WORKDIR /
 RUN apt-get update
 RUN apt-get install -y kmod lvm2 gdisk smartmontools nvme-cli logrotate python3-pecan
 RUN mkdir -p /usr/local/lib/rados-classes
+# RUN ln -sf /boringssl/libcrypto.so /lib/x86_64-linux-gnu/libcrypto.so.1.1
+# RUN ln -sf /boringssl/libssl.so /lib/x86_64-linux-gnu/libssl.so.1.1
 RUN git clone https://github.com/ceph/ceph.git \
     && cd ceph/ \
     && git checkout -b v17.2.6 tags/v17.2.6 && \
@@ -159,4 +174,8 @@ RUN \
      if [ -f /usr/bin/ceph-dencoder ]; then gzip -9 /usr/bin/ceph-dencoder; fi && \
     rm -f /usr/bin/ceph-dencoder
 RUN apt-get remove git vim ninja-build file -y
+RUN cp /lib/x86_64-linux-gnu/libcrypto.so.1.1 /lib/x86_64-linux-gnu/openssl_libcrypto.so.1.1
+RUN ln -sf /boringssl/libcrypto.so /lib/x86_64-linux-gnu/libcrypto.so.1.1
+RUN ln -sf /boringssl/libssl.so /lib/x86_64-linux-gnu/libssl.so.1.1
 RUN ldconfig /usr/local/lib64
+RUN ln -sf /lib/x86_64-linux-gnu/libcrypto.so.3 /lib/x86_64-linux-gnu/libcrypto.so
