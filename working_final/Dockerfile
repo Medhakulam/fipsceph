@@ -1,6 +1,7 @@
 FROM redhat/ubi8
 USER root
 EXPOSE 6789 6800 6801 6802 6803 6804 6805 80 5000 8443 9283
+RUN update-crypto-policies --set FIPS
 RUN \
     dnf update -y --setopt=install_weak_deps=0 --nodocs && \
     dnf install -y gcc gcc-c++ git vim cmake ninja-build python3-pip && \
@@ -15,14 +16,19 @@ RUN \
     yum install -y openssl-devel expat-devel python36-devel lttng-ust-devel
 RUN mkdir /root/legacy
 ADD legacy/* /root/legacy/.
+ADD setup.py /root/setup.py
+ADD test_rbd.py /root/test_rbd.py
 RUN mkdir -p /usr/lib64/rados-classes
 WORKDIR /
 RUN git clone https://github.com/ceph/ceph.git \
     && cd ceph/ \
     && git checkout -b v17.2.6 tags/v17.2.6 && \
     pip3 install sphinx pyyaml && \
-    pip3 install cython==0.29.28 && \
+    pip3 install cython==3.0.0 && \
+    cp /root/setup.py /ceph/src/pybind/rbd/setup.py && \
+    cp /root/test_rbd.py /ceph/src/test/pybind/test_rbd.py && \
     sed -i 's/CMAKE_INSTALL_LIBDIR/CMAKE_INSTALL_FULL_LIBDIR/g' /ceph/src/common/options/osd.yaml.in && \
+    sed -i 's/) with gil/) noexcept with gil/g' /ceph/src/pybind/rbd/rbd.pyx && \ 
     cd /ceph && \
     ./do_cmake.sh && \
     cp /root/legacy/* ./build/include/. && \
